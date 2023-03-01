@@ -41,7 +41,7 @@ Latest recorded update:
         date_list.append(date_list[-1] + timedelta(hours=hourly))
         
     if suppress_prints == False:
-        print(f' >>> list of lenth {len(date_list)} generated with {hourly}-hourly steps between {date_list[0]} and {date_list[-1]}')
+        print(f' >>> list of length {len(date_list)} generated with {hourly}-hourly steps between {date_list[0]} and {date_list[-1]}')
 
         if date_list[-1] != date_f:
             print(f' >>> with provided values, final date {date_list[-1]} does not match provided date_f')

@@ -43,7 +43,7 @@ Latest recorded update:
         
         try:
             # request data using siphon
-            WyomingUpperAir.request_data(date, station)
+            sounding = WyomingUpperAir.request_data(date, station)
             sounding_exist.append(1)
 
         except:
@@ -55,6 +55,6 @@ Latest recorded update:
                columns =['date', 'sounding_exist'])
     
     if suppress_prints == False:
-        print(f' >>> ({np.sum(sounding_exist[sounding_exist==1])}/{len(date_list)}) provided dates had sounding data')
+        print(f' >>> ({np.sum(sounding_exist)}/{len(date_list)}) provided dates had sounding data')
     
     return df
