@@ -21,7 +21,7 @@ from datetime import datetime
 from datetime import timedelta
 
 Latest recorded update:
-02-28-2022
+02-28-2023
     """
     
     assert type(hourly) == int, f'hourly should be integer, not {type(hourly)}'
