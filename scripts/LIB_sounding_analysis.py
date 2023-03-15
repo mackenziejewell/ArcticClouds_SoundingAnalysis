@@ -1,10 +1,11 @@
 
 import numpy as np
 from metpy.units import units
+import matplotlib.pyplot as plt
 
 def interpolate_soundings(variable = [], heights = [], bin_width = 0.25*units.kilometer, 
                           min_height = 0*units.kilometer, max_height = 12*units.kilometer, 
-                          method = 'mean', 
+                          method = 'mean',
                           suppress_plots = False,
                           suppress_prints = True):
     
@@ -36,9 +37,10 @@ OUTPUT:
 DEPENDENCIES:
 import numpy as np
 from metpy.units import units
+import matplotlib.pyplot as plt
 
 Latest recorded update:
-02-28-2023
+03-14-2023
     """
     
     
@@ -70,7 +72,7 @@ Latest recorded update:
     assert max_height.units == min_height.units, f'units of max_height ({max_height.units}) and min_height ({min_height.units}) should match'
     bin_edges = np.arange(min_height.magnitude,max_height.magnitude+bin_width.magnitude,bin_width.magnitude)*bin_width.units
     bin_centers = (bin_edges.magnitude+bin_width.magnitude/2)[:-1]*bin_width.units
-    
+
     if suppress_prints == False:
         print('\n------------\ncreate bins\n------------')
         print(f'bin_edges:\n{bin_edges}')
@@ -78,6 +80,7 @@ Latest recorded update:
 
     if suppress_prints == False:
         print(f'\n--------------------------\ntake {method} of data in bins\n--------------------------')
+   
     
     num_data_inbin = []
     
@@ -107,24 +110,83 @@ Latest recorded update:
             # take mean of data values 
             if len(var_in_bin)==0:
                 mean_var = np.nan
-                num_data_inbin.append(0)
+                if vv == 0:
+                    num_data_inbin.append(0)
             elif len(var_in_bin)==1:
                 mean_var = var_in_bin
-                num_data_inbin.append(1)
+                if vv == 0:
+                    num_data_inbin.append(1)
             else:
                 if str(method) == 'mean':
                     mean_var = np.mean(var_in_bin)
                 elif str(method) == 'max':
                     mean_var = np.max(var_in_bin)
-                num_data_inbin.append(len(var_in_bin))
+                if vv == 0:
+                    num_data_inbin.append(len(var_in_bin))
 
             # save to binned variable array
             binned_var[vv] = np.append(binned_var[vv], mean_var)
         
+    # if last bin is empty 
+    # keep adding points on until a non-empty bin is found
+    # this higher height will be used to interpolate across
+    # desired max_height, then we will crop to desired height later
+    if num_data_inbin[-1] == 0:
+        
+        # run through up to 50 bins higher, 
+        # but break loop if non-empty bin is found
+        for j in range(50):
+        
+            bin_edges = np.append(bin_edges, bin_edges[-1] + bin_width)
+            bin_centers = np.append(bin_centers, bin_centers[-1] + bin_width)
 
-        # check that first and last bin are not nans    
-        assert np.isnan(binned_var[vv].magnitude[0]) == False, f'missing data in lowest bin: {bin_edges[0]} - {bin_edges[1]}'
-        assert np.isnan(binned_var[vv].magnitude[-1]) == False, f'missing data in highest bin: {bin_edges[-2]} - {bin_edges[-1]}'
+            # find edges of bin
+            h_min = bin_edges[-2]
+            h_max = bin_edges[-1]
+            
+            # find indices of data points within bin
+            h_index = (heights>h_min) & (heights<=h_max)
+
+            break_loop = False
+            
+            for vv, var in enumerate(variable):
+                
+                # find data of points in bin
+                var_in_bin = var[h_index]
+                
+                # take mean of data values 
+                if len(var_in_bin)==0:
+                    mean_var = np.nan
+                    if vv == 0:
+                        num_data_inbin.append(0)
+                    break_loop = False
+                elif len(var_in_bin)==1:
+                    mean_var = var_in_bin
+                    if vv == 0:
+                        num_data_inbin.append(1)
+                    break_loop = True
+                else:
+                    if str(method) == 'mean':
+                        mean_var = np.mean(var_in_bin)
+                    elif str(method) == 'max':
+                        mean_var = np.max(var_in_bin)
+                    if vv == 0:
+                        num_data_inbin.append(len(var_in_bin))
+                    break_loop = True
+                    
+                # save to binned variable array
+                binned_var[vv] = np.append(binned_var[vv], mean_var)
+
+            if break_loop == True:
+                break
+
+    # check that first and last bin are not nans    
+    assert np.isnan(binned_var[vv].magnitude[0]) == False, f'missing data in lowest bin: {bin_edges[0]} - {bin_edges[1]}'
+    assert np.isnan(binned_var[vv].magnitude[-1]) == False, f'missing data in highest bin: {bin_edges[-2]} - {bin_edges[-1]}'
+    
+    # this second assert is becoming an issue when chosen highest bin height is empty
+    # so now including a check for empty high bin, then temporarily adding some extra
+    # bins if this is the case to interpolate across chosen highest bin, recropping later
     
     # plot bins
     #----------
@@ -221,5 +283,31 @@ Latest recorded update:
                 # replace nan with interpolated value
                 new_binned_var[vv][i] = interp_var
             
-            
-    return new_binned_var, bin_centers, bin_edges
+          
+    # if we had to add on some extra bins to interplate
+    # re-crop to desired max_height
+    if bin_edges[-1] != max_height:
+        
+        # create empty array to store lists of binned variables
+        binned_var_2 = [None] * len(variable)
+        bin_centers_2 = np.array([])
+        bin_edges_2 = np.array([])
+        
+        # crop edges, centers, and variables if edge exceeds max_height
+        for edge in bin_edges:
+            if edge <= max_height:
+                bin_edges_2 = np.append(bin_edges_2, edge)
+        for cc, center in enumerate(bin_centers):
+            if center < max_height:
+                for vv, var in enumerate(variable):
+                    if cc == 0:
+                        binned_var_2[vv] = np.array([])
+                    binned_var_2[vv] = np.append(binned_var_2[vv], new_binned_var[vv][cc])
+                bin_centers_2 = np.append(bin_centers_2, center)
+             
+    else:
+        binned_var_2 = new_binned_var
+        bin_edges_2 = bin_edges
+        bin_centers_2 = bin_centers
+    
+    return binned_var_2, bin_centers_2, bin_edges_2
