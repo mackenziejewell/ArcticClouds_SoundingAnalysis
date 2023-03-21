@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from siphon.simplewebservice.wyoming import WyomingUpperAir
 
-def check_for_WUA_soundings(date_list = [], station = 'PABR', show_progress = True):
+def check_for_WUA_soundings(date_list = [], station = 'PABR', show_progress = True, num_tries = 1):
     
     """Use siphon Wyoming Upper Air Data Request to check whether sounding data is 
     available from University of Wyoming at given station for given list of dates. 
@@ -20,6 +20,7 @@ INPUT:
 - date_list: list of datetime objects
 - station: string code for desired station (string, default: 'PABR' Point Barrow)
 - show_progress: bool, whether or not to show progress bar (default: True)
+- num_tries: int, number of tries to check for data since some fail when data exists (default 1)
 
 OUTPUT:
 - df: pandas data frame containing dates where sounding data does/does not exist
@@ -35,7 +36,7 @@ from tqdm import tqdm
 import sys
     
 Latest recorded update:
-03-01-2023
+03-21-2023
     """
     
     assert type(station) == str, f'station should be string, not {type(station)}'
@@ -45,8 +46,6 @@ Latest recorded update:
     sounding_exist = []
 
     
-    
-    
     # run with progress bar
     if show_progress == True:
     
@@ -54,14 +53,20 @@ Latest recorded update:
         with tqdm(total=len(date_list), file=sys.stdout) as pbar:
             
             for dd, date in enumerate(date_list):
-                # try to request data
-                try:
-                    # request data using siphon
-                    sounding = WyomingUpperAir.request_data(date, station)
-                    sounding_exist.append(1)
-                except:
+                
+                # request data using siphon
+                # try request multiple times in case there is error with first
+                for attempt in range(num_tries):
+                    try:
+                        # request data using siphon
+                        sounding = WyomingUpperAir.request_data(date, station)
+                        sounding_exist.append(1)
+                        worked = True
+                        break
+                    except:
+                        worked = False
+                if worked == False:
                     sounding_exist.append(0)
-
                 # show progress
                 pbar.set_description('processed: %d' % (1 + dd))
                 pbar.update(1)
@@ -74,14 +79,21 @@ Latest recorded update:
     else:
         # run through dates and check whether data exists
         for date in date_list:
-            try:
-                # request data using siphon
-                sounding = WyomingUpperAir.request_data(date, station)
-                sounding_exist.append(1)
-            except:
+            
+            # request data using siphon
+            # try request multiple times in case there is error with first
+            for attempt in range(num_tries):
+                try:
+                    # request data using siphon
+                    sounding = WyomingUpperAir.request_data(date, station)
+                    sounding_exist.append(1)
+                    worked = True
+                    break
+                except:
+                    worked = False
+            if worked == False:
                 sounding_exist.append(0)
 
-    
     # create pandas data frame containing dates where sounding data does/does not exist
     df = pd.DataFrame(list(zip(date_list, sounding_exist)),
                columns =['date', 'sounding_exist'])
