@@ -2,7 +2,138 @@
 import numpy as np
 from metpy.units import units
 import matplotlib.pyplot as plt
+from metpy.calc import (mixing_ratio_from_specific_humidity,
+                       specific_humidity_from_dewpoint)
+                        
+                        
+def relative_humidity_from_temperature_pressure(P, Td, T, method = 'improved_magnus_1996'):
 
+    """
+    Function to calculate relative humidity, relative to both liquid water and ice from temperature, pressure, and dewpoint. 
+    Formulas used are from:
+    Rogers and Yau text (1996, EBOOK ISBN: 9780080570945)
+    Alduchov and Eskridge (1996, doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2) 
+    Huang (2018, doi: 10.1175/JAMC-D-17-0334.1)
+    
+    INPUT:
+    - T: temperature as metpy variable, i.e. with units. Will be converted to degC
+    - Td: dewpoint as metpy variable, i.e. with units. Will be converted to degC
+    - P: pressure as metpy variable, i.e. with units. Will be converted to hPa
+    - method: equations to use to calculate saturation pressures from T 
+        either: 'improved_magnus_1996' (default) (doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2)
+            or: 'huang_2018', an improved improved magnus (doi: 10.1175/JAMC-D-17-0334.1)
+            
+    OUTPUT:
+    - RH_liq: relative humidity with respect to liquid as metpy variable with units 'percent'
+    - RH_ice: relative humidity with respect to ice as metpy variable with units 'percent'
+    
+    DEPENDENCIES:
+    import numpy as np
+    from metpy.units import units
+    from metpy.calc import (mixing_ratio_from_specific_humidity,
+                       specific_humidity_from_dewpoint)
+    homemade function:
+    saturation_vaporpressures_from_temperature
+
+    Latest recorded update:
+    03-22-2023
+    """
+
+    assert type(method) == str, f'method should be string, not {type(method)}'
+    assert method in ['improved_magnus_1996', 'huang_2018'], f'method should be either "improved_magnus_1996" or "huang_2018", not {method}'
+    assert str(type(T)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'T should be pint quantity (including units), not {type(T)}'
+    assert str(type(Td)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'Td should be pint quantity (including units), not {type(Td)}'
+    assert str(type(P)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'P should be pint quantity (including units), not {type(P)}'
+    
+    # convert T, Td to celsius if not already
+    T_celsius = T.to('degC')
+    Td_celsius = Td.to('degC')
+    
+    # convert P to hPa if not already
+    P_hPa = P.to('hPa')
+    
+    # mixing ratio from dewpoint temperature, pressure
+    #-------------------------------------------------
+
+    # specific humidity from pressure, dewpoint, initially dimensionless
+    q = specific_humidity_from_dewpoint(P_hPa, Td_celsius).to('g/kg')
+
+    # mixing ratio from specific humidity, initially dimensionless
+    w = mixing_ratio_from_specific_humidity(q).to('g/kg')
+
+    # saturation mixing ratio from temperature, pressure
+    #---------------------------------------------------
+
+    # saturation vapor pressure with respect to water and ice from temperature
+    es_liq, es_ice = saturation_vaporpressures_from_temperature(T_celsius, method=method)
+
+    # saturation mixing ration from saturation pressures and pressure, initially dimensionless
+    # Rogers and Yau 2.18
+    ws_liq = (0.622 * (es_liq) / ( P - es_liq )).to('g/kg')
+    ws_ice = (0.622 * (es_ice) / ( P - es_ice )).to('g/kg')
+
+    # relative humidity w.r.t ice and liquid
+    #---------------------------------------
+    
+    # Rogers and Yau 2.20
+    RH_liq = (100*w/ws_liq)*units('percent')
+    RH_ice = (100*w/ws_ice)*units('percent')
+
+    return RH_liq, RH_ice
+
+
+def saturation_vaporpressures_from_temperature(T, method = 'improved_magnus_1996'):
+    
+    """
+    Function to calculate saturation vapor pressure over water and ice from temperature. Formulas used are from 
+    Alduchov and Eskridge (1996, doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2) and Huang (2018, doi: 10.1175/JAMC-D-17-0334.1)
+    
+    INPUT:
+    - T: temperature as metpy variable, i.e. with units. Will be converted to degC
+    - method: equations to use to calculate saturation pressures from T 
+        either: 'improved_magnus_1996' (default) (doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2)
+            or: 'huang_2018', an improved improved magnus (doi: 10.1175/JAMC-D-17-0334.1)
+            
+    OUTPUT:
+    - es_liq: saturation vapor pressure with respect to liquid as metpy variable with units 'hPa'
+    - es_ice: saturation vapor pressure with respect to ice as metpy variable with units 'hPa'
+    
+    DEPENDENCIES:
+    import numpy as np
+    from metpy.units import units
+
+    Latest recorded update:
+    03-22-2023
+    """
+    
+    assert type(method) == str, f'method should be string, not {type(method)}'
+    assert method in ['improved_magnus_1996', 'huang_2018'], f'method should be either "improved_magnus_1996" or "huang_2018", not {method}'
+    assert str(type(T)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'T should be pint quantity (including units), not {type(T)}'
+    
+    # convert T to celsius if not already
+    T_celsius = T.to('degC').magnitude
+    
+    # Improved Magnus Form of saturation vapor pressures from Alduchov and Eskridge (1996)
+    # from:
+    # Alduchov, O. A., and R. E. Eskridge, 1996: Improved Magnus Form Approximation of Saturation Vapor Pressure. 
+    # J. Appl. Meteor. Climatol., 35, 601–609, https://doi.org/10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2
+    
+    if str(method) == 'improved_magnus_1996':
+        es_liq = (((610.94 * np.exp( 17.625 * T_celsius / (T_celsius + 243.04) ) ))* units('Pa')).to('hPa')
+        es_ice = (((611.21 * np.exp( 22.587 * T_celsius / (T_celsius + 273.86) ) ))* units('Pa')).to('hPa')
+
+    # Further improved saturation vapor pressures from Huang (2018)
+    # from:
+    # Huang, J., 2018: A Simple Accurate Formula for Calculating Saturation Vapor Pressure of Water and Ice. 
+    # J. Appl. Meteor. Climatol., 57, 1265–1272, https://doi.org/10.1175/JAMC-D-17-0334.1.
+    elif str(method) == 'huang_2018':
+        es_liq = ((np.exp( 34.494 - (4924.99/(T_celsius + 237.1)) ) / ((T_celsius + 105)**(1.57)))* units('Pa')).to('hPa')
+        es_ice = ((np.exp( 43.494 - (6545.8/(T_celsius + 278)) ) / ((T_celsius + 868)**(2)))* units('Pa')).to('hPa')
+    
+    return es_liq, es_ice
+    
+
+    
 def interpolate_soundings(variable = [], heights = [], bin_width = 0.25*units.kilometer, 
                           min_height = 0*units.kilometer, max_height = 12*units.kilometer, 
                           method = 'mean',
