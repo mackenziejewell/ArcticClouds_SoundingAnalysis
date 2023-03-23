@@ -171,7 +171,7 @@ from metpy.units import units
 import matplotlib.pyplot as plt
 
 Latest recorded update:
-03-14-2023
+03-23-2023
     """
     
     
@@ -249,9 +249,9 @@ Latest recorded update:
                     num_data_inbin.append(1)
             else:
                 if str(method) == 'mean':
-                    mean_var = np.mean(var_in_bin)
+                    mean_var = np.nanmean(var_in_bin)
                 elif str(method) == 'max':
-                    mean_var = np.max(var_in_bin)
+                    mean_var = np.nanmax(var_in_bin)
                 if vv == 0:
                     num_data_inbin.append(len(var_in_bin))
 
@@ -264,9 +264,9 @@ Latest recorded update:
     # desired max_height, then we will crop to desired height later
     if num_data_inbin[-1] == 0:
         
-        # run through up to 50 bins higher, 
+        # run through up to 100 bins higher, 
         # but break loop if non-empty bin is found
-        for j in range(50):
+        for j in range(100):
         
             bin_edges = np.append(bin_edges, bin_edges[-1] + bin_width)
             bin_centers = np.append(bin_centers, bin_centers[-1] + bin_width)
@@ -298,9 +298,9 @@ Latest recorded update:
                     break_loop = True
                 else:
                     if str(method) == 'mean':
-                        mean_var = np.mean(var_in_bin)
+                        mean_var = np.nanmean(var_in_bin)
                     elif str(method) == 'max':
-                        mean_var = np.max(var_in_bin)
+                        mean_var = np.nanmax(var_in_bin)
                     if vv == 0:
                         num_data_inbin.append(len(var_in_bin))
                     break_loop = True
