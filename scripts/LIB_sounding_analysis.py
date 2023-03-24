@@ -5,135 +5,8 @@ import matplotlib.pyplot as plt
 from metpy.calc import (mixing_ratio_from_specific_humidity,
                        specific_humidity_from_dewpoint)
                         
-                        
-def relative_humidity_from_temperature_pressure(P, Td, T, method = 'improved_magnus_1996'):
-
-    """
-    Function to calculate relative humidity, relative to both liquid water and ice from temperature, pressure, and dewpoint. 
-    Formulas used are from:
-    Rogers and Yau text (1996, EBOOK ISBN: 9780080570945)
-    Alduchov and Eskridge (1996, doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2) 
-    Huang (2018, doi: 10.1175/JAMC-D-17-0334.1)
-    
-    INPUT:
-    - T: temperature as metpy variable, i.e. with units. Will be converted to degC
-    - Td: dewpoint as metpy variable, i.e. with units. Will be converted to degC
-    - P: pressure as metpy variable, i.e. with units. Will be converted to hPa
-    - method: equations to use to calculate saturation pressures from T 
-        either: 'improved_magnus_1996' (default) (doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2)
-            or: 'huang_2018', an improved improved magnus (doi: 10.1175/JAMC-D-17-0334.1)
-            
-    OUTPUT:
-    - RH_liq: relative humidity with respect to liquid as metpy variable with units 'percent'
-    - RH_ice: relative humidity with respect to ice as metpy variable with units 'percent'
-    
-    DEPENDENCIES:
-    import numpy as np
-    from metpy.units import units
-    from metpy.calc import (mixing_ratio_from_specific_humidity,
-                       specific_humidity_from_dewpoint)
-    homemade function:
-    saturation_vaporpressures_from_temperature
-
-    Latest recorded update:
-    03-22-2023
-    """
-
-    assert type(method) == str, f'method should be string, not {type(method)}'
-    assert method in ['improved_magnus_1996', 'huang_2018'], f'method should be either "improved_magnus_1996" or "huang_2018", not {method}'
-    assert str(type(T)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'T should be pint quantity (including units), not {type(T)}'
-    assert str(type(Td)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'Td should be pint quantity (including units), not {type(Td)}'
-    assert str(type(P)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'P should be pint quantity (including units), not {type(P)}'
-    
-    # convert T, Td to celsius if not already
-    T_celsius = T.to('degC')
-    Td_celsius = Td.to('degC')
-    
-    # convert P to hPa if not already
-    P_hPa = P.to('hPa')
-    
-    # mixing ratio from dewpoint temperature, pressure
-    #-------------------------------------------------
-
-    # specific humidity from pressure, dewpoint, initially dimensionless
-    q = specific_humidity_from_dewpoint(P_hPa, Td_celsius).to('g/kg')
-
-    # mixing ratio from specific humidity, initially dimensionless
-    w = mixing_ratio_from_specific_humidity(q).to('g/kg')
-
-    # saturation mixing ratio from temperature, pressure
-    #---------------------------------------------------
-
-    # saturation vapor pressure with respect to water and ice from temperature
-    es_liq, es_ice = saturation_vaporpressures_from_temperature(T_celsius, method=method)
-
-    # saturation mixing ration from saturation pressures and pressure, initially dimensionless
-    # Rogers and Yau 2.18
-    ws_liq = (0.622 * (es_liq) / ( P - es_liq )).to('g/kg')
-    ws_ice = (0.622 * (es_ice) / ( P - es_ice )).to('g/kg')
-
-    # relative humidity w.r.t ice and liquid
-    #---------------------------------------
-    
-    # Rogers and Yau 2.20
-    RH_liq = (100*w/ws_liq)*units('percent')
-    RH_ice = (100*w/ws_ice)*units('percent')
-
-    return RH_liq, RH_ice
 
 
-def saturation_vaporpressures_from_temperature(T, method = 'improved_magnus_1996'):
-    
-    """
-    Function to calculate saturation vapor pressure over water and ice from temperature. Formulas used are from 
-    Alduchov and Eskridge (1996, doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2) and Huang (2018, doi: 10.1175/JAMC-D-17-0334.1)
-    
-    INPUT:
-    - T: temperature as metpy variable, i.e. with units. Will be converted to degC
-    - method: equations to use to calculate saturation pressures from T 
-        either: 'improved_magnus_1996' (default) (doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2)
-            or: 'huang_2018', an improved improved magnus (doi: 10.1175/JAMC-D-17-0334.1)
-            
-    OUTPUT:
-    - es_liq: saturation vapor pressure with respect to liquid as metpy variable with units 'hPa'
-    - es_ice: saturation vapor pressure with respect to ice as metpy variable with units 'hPa'
-    
-    DEPENDENCIES:
-    import numpy as np
-    from metpy.units import units
-
-    Latest recorded update:
-    03-22-2023
-    """
-    
-    assert type(method) == str, f'method should be string, not {type(method)}'
-    assert method in ['improved_magnus_1996', 'huang_2018'], f'method should be either "improved_magnus_1996" or "huang_2018", not {method}'
-    assert str(type(T)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'T should be pint quantity (including units), not {type(T)}'
-    
-    # convert T to celsius if not already
-    T_celsius = T.to('degC').magnitude
-    
-    # Improved Magnus Form of saturation vapor pressures from Alduchov and Eskridge (1996)
-    # from:
-    # Alduchov, O. A., and R. E. Eskridge, 1996: Improved Magnus Form Approximation of Saturation Vapor Pressure. 
-    # J. Appl. Meteor. Climatol., 35, 601–609, https://doi.org/10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2
-    
-    if str(method) == 'improved_magnus_1996':
-        es_liq = (((610.94 * np.exp( 17.625 * T_celsius / (T_celsius + 243.04) ) ))* units('Pa')).to('hPa')
-        es_ice = (((611.21 * np.exp( 22.587 * T_celsius / (T_celsius + 273.86) ) ))* units('Pa')).to('hPa')
-
-    # Further improved saturation vapor pressures from Huang (2018)
-    # from:
-    # Huang, J., 2018: A Simple Accurate Formula for Calculating Saturation Vapor Pressure of Water and Ice. 
-    # J. Appl. Meteor. Climatol., 57, 1265–1272, https://doi.org/10.1175/JAMC-D-17-0334.1.
-    elif str(method) == 'huang_2018':
-        es_liq = ((np.exp( 34.494 - (4924.99/(T_celsius + 237.1)) ) / ((T_celsius + 105)**(1.57)))* units('Pa')).to('hPa')
-        es_ice = ((np.exp( 43.494 - (6545.8/(T_celsius + 278)) ) / ((T_celsius + 868)**(2)))* units('Pa')).to('hPa')
-    
-    return es_liq, es_ice
-    
-
-    
 def interpolate_soundings(variable = [], heights = [], bin_width = 0.25*units.kilometer, 
                           min_height = 0*units.kilometer, max_height = 12*units.kilometer, 
                           method = 'mean',
@@ -170,6 +43,10 @@ import numpy as np
 from metpy.units import units
 import matplotlib.pyplot as plt
 
+# homemade functions:
+create_regular_h
+bin_data
+
 Latest recorded update:
 03-23-2023
     """
@@ -198,71 +75,26 @@ Latest recorded update:
     
     # create bins
     #------------
-    # check all units match
-    assert bin_width.units == min_height.units, f'units of bin_width ({bin_width.units}) and min_height ({min_height.units}) should match'
-    assert max_height.units == min_height.units, f'units of max_height ({max_height.units}) and min_height ({min_height.units}) should match'
-    bin_edges = np.arange(min_height.magnitude,max_height.magnitude+bin_width.magnitude,bin_width.magnitude)*bin_width.units
-    bin_centers = (bin_edges.magnitude+bin_width.magnitude/2)[:-1]*bin_width.units
+    bin_centers, bin_edges = create_regular_h(bin_width = bin_width,
+                                              min_height = min_height, 
+                                              max_height = max_height)
 
-    if suppress_prints == False:
-        print('\n------------\ncreate bins\n------------')
-        print(f'bin_edges:\n{bin_edges}')
-        print(f'\nbin_centers:\n{bin_centers}')
-
-    if suppress_prints == False:
-        print(f'\n--------------------------\ntake {method} of data in bins\n--------------------------')
-   
-    
-    num_data_inbin = []
-    
     # create empty array to store lists of binned variables
     binned_var = [None] * len(variable)
+    num_data_inbin = [None] * len(variable)
     
+    # for each variable, 
+    # bin data, and set to nan where no data found
     for vv, var in enumerate(variable):
-        
-        binned_var[vv] = np.array([])
-        
-        # bin/consolidate data, fill empty bins with nan
-        #-----------------------------------------------
-        # run through and average data within bins
-        # that contain data
-        for i, bin_i in enumerate(bin_centers):
-
-            # find edges of bin
-            h_min = bin_edges[i]
-            h_max = bin_edges[i+1]
-
-            # find indices of data points within bin
-            h_index = (heights>h_min) & (heights<=h_max)
-
-            # find data of points in bin
-            var_in_bin = var[h_index]
-
-            # take mean of data values 
-            if len(var_in_bin)==0:
-                mean_var = np.nan
-                if vv == 0:
-                    num_data_inbin.append(0)
-            elif len(var_in_bin)==1:
-                mean_var = var_in_bin
-                if vv == 0:
-                    num_data_inbin.append(1)
-            else:
-                if str(method) == 'mean':
-                    mean_var = np.nanmean(var_in_bin)
-                elif str(method) == 'max':
-                    mean_var = np.nanmax(var_in_bin)
-                if vv == 0:
-                    num_data_inbin.append(len(var_in_bin))
-
-            # save to binned variable array
-            binned_var[vv] = np.append(binned_var[vv], mean_var)
+        binned_var[vv], num_data_inbin[vv] = bin_data(var = var, heights = heights, 
+                                                    bin_centers = bin_centers, bin_edges = bin_edges,
+                                                    method = method)
         
     # if last bin is empty 
     # keep adding points on until a non-empty bin is found
     # this higher height will be used to interpolate across
     # desired max_height, then we will crop to desired height later
-    if num_data_inbin[-1] == 0:
+    if num_data_inbin[0][-1] == 0:
         
         # run through up to 100 bins higher, 
         # but break loop if non-empty bin is found
@@ -442,3 +274,270 @@ Latest recorded update:
         bin_centers_2 = bin_centers
     
     return binned_var_2, bin_centers_2, bin_edges_2
+
+
+
+
+def bin_data(var = [], heights = [], bin_centers = [], bin_edges = [], 
+             method = 'mean', suppress_prints = True):
+    
+    """Sort data stored at irregular heights into bins with regular height intervals.
+
+INPUT: 
+- var: data variable to be binned by height
+- heights: height data (pint quantities with units) corresponding to var
+- bin_centers: evenly spaced heights (pint quantities with units) corresponding to how data will be binned
+- bin_edges: edges of bins of evenly spaced heights (pint quantities with units)
+- method: method used to describe multiple data points falling within single data bin (string)
+        'mean' --> take average of variable across all data points found within given bin
+        'max' --> take maximum value of variable across all data points found within given bin
+- suppress_prints: bool, whether or not to supress print statements (default: True)
+
+OUTPUT:
+- binned_var: binned variable, with nans where no data were found
+- num_data_bin: number of data points that were found in each bin
+
+DEPENDENCIES:
+import numpy as np
+from metpy.units import units
+
+Latest recorded update:
+03-23-2023
+    """
+    
+    assert len(var) > 0, f'var should be non-empty'
+    assert len(heights) > 0, f'heights should be non-empty'
+    assert len(bin_centers) > 0, f'bin_centers should be non-empty'
+    assert len(bin_edges) > 0, f'bin_edges should be non-empty'
+    
+    assert type(method) == str, f'method should be string, not {type(method)}'
+    assert method in ['mean', 'max'], f"method should be one of 'mean', 'max', not {method}"
+    assert type(suppress_prints) == bool, f'suppress_prints should be bool, not {type(suppress_prints)}'
+    
+    if suppress_prints == False:
+        print(f'\n--------------------------\ntake {method} of data in bins\n--------------------------')
+        
+    # create empty array to store lists of binned variables
+    binned_var = np.array([])
+    num_data_bin = np.array([])
+    
+    # bin/consolidate data, fill empty bins with nan
+    #-----------------------------------------------
+    # run through and average data within bins
+    # that contain data
+    for i, bin_i in enumerate(bin_centers):
+
+        # find edges of bin
+        h_min = bin_edges[i]
+        h_max = bin_edges[i+1]
+
+        # find indices of data points within bin
+        h_index = (heights>h_min) & (heights<=h_max)
+
+        # find data of points in bin
+        var_in_bin = var[h_index]
+
+        # within each bin...
+        #-------------------
+        # if no data fall into bin, set var to nan
+        if len(var_in_bin)==0:
+            mean_var = np.nan
+            num_data_bin = np.append(num_data_bin, 0)
+            
+        # if single data values falls into bin, set var to value
+        elif len(var_in_bin)==1:
+            mean_var = var_in_bin
+            num_data_bin = np.append(num_data_bin, 1)
+
+        # if multiple values found in bin, use method to 
+        # determine how to encapsulate data in single value
+        else:
+            if str(method) == 'mean':
+                mean_var = np.nanmean(var_in_bin)
+            elif str(method) == 'max':
+                mean_var = np.nanmax(var_in_bin)
+            num_data_bin = np.append(num_data_bin, len(var_in_bin))
+
+        # save to binned variable array
+        binned_var = np.append(binned_var, mean_var)
+        
+    return binned_var, num_data_bin
+
+
+
+def create_regular_h(bin_width = 0.25*units.kilometer, min_height = 0*units.kilometer, 
+                     max_height = 12*units.kilometer, suppress_prints = True):
+    
+    """Create regular h array given height range and interval width.
+
+INPUT: 
+- bin_width: size of vertical bin steps to use (pint quantity with units, default: 0.25*units.kilometer)
+- min_height: lowest bin edge (pint quantity with units, default: 0*units.kilometer)
+- max_height: highest bin edge (pint quantity with units, default: 12*units.kilometer)
+- suppress_prints: bool, whether or not to supress print statements (default: True)
+
+OUTPUT:
+- bin_centers: new evenly spaced heights corresponding to new binned/interpolated data
+- bin_edges: edges of bins
+
+DEPENDENCIES:
+import numpy as np
+from metpy.units import units
+
+Latest recorded update:
+03-23-2023
+    """
+
+    assert str(type(bin_width)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'bin_width should be pint quantity, not {type(bin_width)}'
+    assert str(type(min_height)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'min_height should be pint quantity, not {type(min_height)}'
+    assert str(type(max_height)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'max_height should be pint quantity, not {type(max_height)}'
+    assert type(suppress_prints) == bool, f'suppress_prints should be bool, not {type(suppress_prints)}'
+    
+    
+    # create bins
+    #------------
+    # check all units match
+    assert bin_width.units == min_height.units, f'units of bin_width ({bin_width.units}) and min_height ({min_height.units}) should match'
+    assert max_height.units == min_height.units, f'units of max_height ({max_height.units}) and min_height ({min_height.units}) should match'
+    
+    # create bins
+    bin_edges = np.arange(min_height.magnitude, max_height.magnitude + bin_width.magnitude, bin_width.magnitude) * bin_width.units
+    bin_centers = (bin_edges.magnitude+bin_width.magnitude/2)[:-1]*bin_width.units
+
+    if suppress_prints == False:
+        print('\n------------\ncreate bins\n------------')
+        print(f'bin_edges:\n{bin_edges}')
+        print(f'\nbin_centers:\n{bin_centers}')
+
+    return bin_centers, bin_edges
+
+
+
+def relative_humidity_from_temperature_pressure(P, Td, T, method = 'improved_magnus_1996'):
+
+    """
+    Function to calculate relative humidity, relative to both liquid water and ice from temperature, pressure, and dewpoint. 
+    Formulas used are from:
+    Rogers and Yau text (1996, EBOOK ISBN: 9780080570945)
+    Alduchov and Eskridge (1996, doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2) 
+    Huang (2018, doi: 10.1175/JAMC-D-17-0334.1)
+    
+    INPUT:
+    - T: temperature as metpy variable, i.e. with units. Will be converted to degC
+    - Td: dewpoint as metpy variable, i.e. with units. Will be converted to degC
+    - P: pressure as metpy variable, i.e. with units. Will be converted to hPa
+    - method: equations to use to calculate saturation pressures from T 
+        either: 'improved_magnus_1996' (default) (doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2)
+            or: 'huang_2018', an improved improved magnus (doi: 10.1175/JAMC-D-17-0334.1)
+            
+    OUTPUT:
+    - RH_liq: relative humidity with respect to liquid as metpy variable with units 'percent'
+    - RH_ice: relative humidity with respect to ice as metpy variable with units 'percent'
+    
+    DEPENDENCIES:
+    import numpy as np
+    from metpy.units import units
+    from metpy.calc import (mixing_ratio_from_specific_humidity,
+                       specific_humidity_from_dewpoint)
+    homemade function:
+    saturation_vaporpressures_from_temperature
+
+    Latest recorded update:
+    03-22-2023
+    """
+
+    assert type(method) == str, f'method should be string, not {type(method)}'
+    assert method in ['improved_magnus_1996', 'huang_2018'], f'method should be either "improved_magnus_1996" or "huang_2018", not {method}'
+    assert str(type(T)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'T should be pint quantity (including units), not {type(T)}'
+    assert str(type(Td)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'Td should be pint quantity (including units), not {type(Td)}'
+    assert str(type(P)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'P should be pint quantity (including units), not {type(P)}'
+    
+    # convert T, Td to celsius if not already
+    T_celsius = T.to('degC')
+    Td_celsius = Td.to('degC')
+    
+    # convert P to hPa if not already
+    P_hPa = P.to('hPa')
+    
+    # mixing ratio from dewpoint temperature, pressure
+    #-------------------------------------------------
+
+    # specific humidity from pressure, dewpoint, initially dimensionless
+    q = specific_humidity_from_dewpoint(P_hPa, Td_celsius).to('g/kg')
+
+    # mixing ratio from specific humidity, initially dimensionless
+    w = mixing_ratio_from_specific_humidity(q).to('g/kg')
+
+    # saturation mixing ratio from temperature, pressure
+    #---------------------------------------------------
+
+    # saturation vapor pressure with respect to water and ice from temperature
+    es_liq, es_ice = saturation_vaporpressures_from_temperature(T_celsius, method=method)
+
+    # saturation mixing ration from saturation pressures and pressure, initially dimensionless
+    # Rogers and Yau 2.18
+    ws_liq = (0.622 * (es_liq) / ( P - es_liq )).to('g/kg')
+    ws_ice = (0.622 * (es_ice) / ( P - es_ice )).to('g/kg')
+
+    # relative humidity w.r.t ice and liquid
+    #---------------------------------------
+    
+    # Rogers and Yau 2.20
+    RH_liq = (100*w/ws_liq)*units('percent')
+    RH_ice = (100*w/ws_ice)*units('percent')
+
+    return RH_liq, RH_ice
+
+
+def saturation_vaporpressures_from_temperature(T, method = 'improved_magnus_1996'):
+    
+    """
+    Function to calculate saturation vapor pressure over water and ice from temperature. Formulas used are from 
+    Alduchov and Eskridge (1996, doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2) and Huang (2018, doi: 10.1175/JAMC-D-17-0334.1)
+    
+    INPUT:
+    - T: temperature as metpy variable, i.e. with units. Will be converted to degC
+    - method: equations to use to calculate saturation pressures from T 
+        either: 'improved_magnus_1996' (default) (doi: 10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2)
+            or: 'huang_2018', an improved improved magnus (doi: 10.1175/JAMC-D-17-0334.1)
+            
+    OUTPUT:
+    - es_liq: saturation vapor pressure with respect to liquid as metpy variable with units 'hPa'
+    - es_ice: saturation vapor pressure with respect to ice as metpy variable with units 'hPa'
+    
+    DEPENDENCIES:
+    import numpy as np
+    from metpy.units import units
+
+    Latest recorded update:
+    03-22-2023
+    """
+    
+    assert type(method) == str, f'method should be string, not {type(method)}'
+    assert method in ['improved_magnus_1996', 'huang_2018'], f'method should be either "improved_magnus_1996" or "huang_2018", not {method}'
+    assert str(type(T)) == "<class 'pint.quantity.build_quantity_class.<locals>.Quantity'>", f'T should be pint quantity (including units), not {type(T)}'
+    
+    # convert T to celsius if not already
+    T_celsius = T.to('degC').magnitude
+    
+    # Improved Magnus Form of saturation vapor pressures from Alduchov and Eskridge (1996)
+    # from:
+    # Alduchov, O. A., and R. E. Eskridge, 1996: Improved Magnus Form Approximation of Saturation Vapor Pressure. 
+    # J. Appl. Meteor. Climatol., 35, 601–609, https://doi.org/10.1175/1520-0450(1996)035<0601:IMFAOS>2.0.CO;2
+    
+    if str(method) == 'improved_magnus_1996':
+        es_liq = (((610.94 * np.exp( 17.625 * T_celsius / (T_celsius + 243.04) ) ))* units('Pa')).to('hPa')
+        es_ice = (((611.21 * np.exp( 22.587 * T_celsius / (T_celsius + 273.86) ) ))* units('Pa')).to('hPa')
+
+    # Further improved saturation vapor pressures from Huang (2018)
+    # from:
+    # Huang, J., 2018: A Simple Accurate Formula for Calculating Saturation Vapor Pressure of Water and Ice. 
+    # J. Appl. Meteor. Climatol., 57, 1265–1272, https://doi.org/10.1175/JAMC-D-17-0334.1.
+    elif str(method) == 'huang_2018':
+        es_liq = ((np.exp( 34.494 - (4924.99/(T_celsius + 237.1)) ) / ((T_celsius + 105)**(1.57)))* units('Pa')).to('hPa')
+        es_ice = ((np.exp( 43.494 - (6545.8/(T_celsius + 278)) ) / ((T_celsius + 868)**(2)))* units('Pa')).to('hPa')
+    
+    return es_liq, es_ice
+    
+
+    
